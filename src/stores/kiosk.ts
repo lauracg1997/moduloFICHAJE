@@ -8,7 +8,7 @@ export const useKioskStore = defineStore('kiosk', () => {
     cif: 'B12345678',
     deviceCode: '9999',
     center: 'Centro Principal',
-    radiusKm: 0.5,
+    radiusKm: 0.15,
     requirePhoto: false,
     geofenceEnabled: false,
     kioskLatitude: null as number | null,

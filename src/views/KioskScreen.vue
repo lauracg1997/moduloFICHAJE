@@ -22,7 +22,7 @@ const kioskStore = useKioskStore();
 const employeesStore = useEmployeesStore();
 const workLogsStore = useWorkLogsStore();
 const calendarsStore = useCalendarsStore();
-const { playEntrada, playSalida, playDescanso, playReanudar, playError, playGoal } = useKioskAudio();
+const { playEntrada, playSalida, playDescanso, playReanudar, playError, playGoal, playBirthday } = useKioskAudio();
 
 const employeeDni = ref('');
 const pin = ref('');
@@ -47,6 +47,25 @@ const showKioskError = (msg: string) => {
 };
 const showSatisfactionSurvey = ref(false);
 const showConfirmation = ref(false);
+
+// ─── Cumpleaños ───────────────────────────────────────────────────────────────
+const showBirthday = ref(false);
+const birthdayName = ref('');
+let birthdayTimer: ReturnType<typeof setTimeout> | null = null;
+
+const checkBirthday = (emp: { name: string; birthday?: string }) => {
+  if (!emp.birthday) return;
+  const today = new Date();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  if (emp.birthday === `${mm}-${dd}`) {
+    birthdayName.value = emp.name.split(' ')[0];
+    showBirthday.value = true;
+    playBirthday();
+    if (birthdayTimer) clearTimeout(birthdayTimer);
+    birthdayTimer = setTimeout(() => { showBirthday.value = false; }, 7000);
+  }
+};
 const showExitMessage = ref(false);
 const showTopToast = ref(false);
 const topToastMessage = ref('');
@@ -213,7 +232,7 @@ const resetInactivityTimer = () => {
 };
 
 // ─── Auto-logout sesión empleado (8 s de inactividad) ────────────────────────
-const EMPLOYEE_SESSION_TIMEOUT = 8000;
+const EMPLOYEE_SESSION_TIMEOUT = 20000;
 let sessionTimer: ReturnType<typeof setTimeout> | null = null;
 const sessionCountdown = ref(0);
 let sessionCountdownInterval: ReturnType<typeof setInterval> | null = null;
@@ -335,20 +354,14 @@ const handleClear = () => {
 };
 
 const handleLogin = async () => {
-  // Si estamos en el paso DNI, avanzar al PIN
-  if (activeField.value === 'dni') {
-    if (!employeeDni.value) {
-      showKioskError('Introduce tu DNI o NIE para continuar.');
-      return;
-    }
-    activeField.value = 'pin';
-    pin.value = '';
-    keyboard.value?.resetToNumeric();
+  if (!employeeDni.value) {
+    showKioskError('Introduce tu DNI o NIE para continuar.');
     return;
   }
-
-  if (!employeeDni.value || pin.value.length < 5) {
-    showKioskError('Introduce tu DNI y PIN completo para continuar.');
+  if (pin.value.length < 5) {
+    showKioskError('Introduce tu PIN de 5 dígitos.');
+    activeField.value = 'pin';
+    keyboard.value?.resetToNumeric();
     return;
   }
 
@@ -372,6 +385,7 @@ const handleLogin = async () => {
   }
 
   kioskStore.selectEmployee(emp.id);
+  checkBirthday(emp);
 
   if (activeLeave.value) {
     pin.value = '';
@@ -454,10 +468,84 @@ const openDashboardFromCard = async () => {
   proceedAfterGeofence();
 };
 
+// ─── Cámara real ─────────────────────────────────────────────────────────────
+const videoRef    = ref<HTMLVideoElement | null>(null);
+const canvasRef   = ref<HTMLCanvasElement | null>(null);
+const cameraStream = ref<MediaStream | null>(null);
+const cameraError  = ref('');
+const photoTaken   = ref(false);
+const photoDataUrl = ref('');
+
+const startCamera = async () => {
+  cameraError.value  = '';
+  photoTaken.value   = false;
+  photoDataUrl.value = '';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    cameraStream.value = stream;
+    await nextTick();
+    if (videoRef.value) {
+      videoRef.value.srcObject = stream;
+      videoRef.value.play();
+    }
+  } catch (err: any) {
+    if (err.name === 'NotAllowedError') {
+      cameraError.value = 'Permiso de cámara denegado. Actívalo en la configuración del navegador.';
+    } else if (err.name === 'NotFoundError') {
+      cameraError.value = 'No se encontró ninguna cámara en este dispositivo.';
+    } else {
+      cameraError.value = 'No se pudo acceder a la cámara.';
+    }
+  }
+};
+
+const stopCamera = () => {
+  cameraStream.value?.getTracks().forEach(t => t.stop());
+  cameraStream.value = null;
+};
+
+const capturePhoto = () => {
+  if (!videoRef.value || !canvasRef.value) return;
+  const ctx = canvasRef.value.getContext('2d');
+  if (!ctx) return;
+  canvasRef.value.width  = videoRef.value.videoWidth  || 640;
+  canvasRef.value.height = videoRef.value.videoHeight || 480;
+  ctx.drawImage(videoRef.value, 0, 0);
+  photoDataUrl.value = canvasRef.value.toDataURL('image/jpeg', 0.85);
+  photoTaken.value = true;
+  stopCamera();
+};
+
+const retakePhoto = async () => {
+  photoTaken.value   = false;
+  photoDataUrl.value = '';
+  await startCamera();
+};
+
 const confirmPhoto = () => {
+  stopCamera();
+  photoTaken.value   = false;
+  photoDataUrl.value = '';
   isPhotoVerifying.value = false;
   showEmployeeCard.value = true;
 };
+
+const cancelPhoto = () => {
+  stopCamera();
+  photoTaken.value   = false;
+  photoDataUrl.value = '';
+  isPhotoVerifying.value = false;
+  pin.value = '';
+  employeeDni.value = '';
+  activeField.value = 'dni';
+  kioskStore.resetSelection();
+};
+
+// Arrancar/parar cámara al entrar/salir de la pantalla de foto
+watch(isPhotoVerifying, (val) => { if (val) startCamera(); else stopCamera(); });
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4','#f97316'];
@@ -811,30 +899,74 @@ const getStatusText = (status: string) => {
 
       <!-- ── Verificación de Foto ───────────────────────────────────────────── -->
       <template v-else-if="isPhotoVerifying">
-        <GlassCard class="w-full max-w-2xl p-10 flex flex-col items-center justify-center shadow-2xl bg-black/40 animate-in zoom-in duration-500">
-          <div class="text-center mb-10">
-            <div class="w-20 h-20 bg-blue-500/20 rounded-3xl flex items-center justify-center text-blue-400 mx-auto mb-6">
-              <Camera class="w-10 h-10" />
+        <GlassCard class="w-full max-w-md p-8 flex flex-col items-center shadow-2xl bg-black/40 animate-in zoom-in duration-500">
+
+          <div class="text-center mb-6">
+            <div class="w-14 h-14 bg-blue-500/20 rounded-2xl flex items-center justify-center text-blue-400 mx-auto mb-4">
+              <Camera class="w-7 h-7" />
             </div>
-            <h3 class="text-3xl font-bold mb-2">Verificación Visual</h3>
-            <p class="text-gray-400">Colócate frente a la cámara para validar el fichaje</p>
+            <h3 class="text-2xl font-bold tracking-tighter">Verificación por foto</h3>
+            <p class="text-gray-500 text-sm mt-1">
+              {{ photoTaken ? 'Revisa la foto y confirma' : 'Colócate frente a la cámara' }}
+            </p>
           </div>
 
-          <div class="relative w-full max-w-md aspect-square bg-black/60 rounded-[3rem] border-4 border-white/5 flex items-center justify-center overflow-hidden">
-            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_rgba(0,0,0,0.4)_100%)]" />
-            <div class="w-64 h-80 border-2 border-dashed border-blue-500/50 rounded-full flex items-center justify-center">
-              <User class="w-32 h-32 text-white/10" />
+          <!-- Error de permisos -->
+          <div v-if="cameraError" class="w-full mb-4 px-5 py-4 rounded-2xl bg-red-500/10 border border-red-500/25 text-center">
+            <p class="text-red-400 text-sm font-bold">{{ cameraError }}</p>
+            <button @click="startCamera" class="mt-2 text-xs text-blue-400 underline">Reintentar</button>
+          </div>
+
+          <!-- Visor cámara / foto capturada -->
+          <div class="relative w-full rounded-2xl overflow-hidden bg-black/60 border border-white/8 mb-6"
+               style="aspect-ratio: 4/3">
+            <!-- Video en directo -->
+            <video v-show="!photoTaken && !cameraError"
+                   ref="videoRef"
+                   autoplay playsinline muted
+                   class="w-full h-full object-cover" />
+            <!-- Guía de encuadre -->
+            <div v-if="!photoTaken && !cameraError && cameraStream"
+                 class="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="w-40 h-48 border-2 border-blue-400/60 rounded-full" />
+            </div>
+            <!-- Foto capturada -->
+            <img v-if="photoTaken && photoDataUrl" :src="photoDataUrl"
+                 class="w-full h-full object-cover" />
+            <!-- Spinner mientras carga cámara -->
+            <div v-if="!photoTaken && !cameraError && !cameraStream"
+                 class="absolute inset-0 flex items-center justify-center">
+              <div class="w-8 h-8 border-2 border-blue-500/40 border-t-blue-500 rounded-full animate-spin" />
             </div>
           </div>
 
-          <div class="mt-12 flex gap-4 w-full max-w-md">
-            <GlassButton @click="isPhotoVerifying = false; pin = '';" variant="secondary" class="flex-1 py-6">
-              <X class="w-5 h-5" /> CANCELAR
-            </GlassButton>
-            <GlassButton @click="confirmPhoto" variant="primary" class="flex-[2] py-6">
-              <CheckCircle2 class="w-6 h-6" /> CONFIRMAR FOTO
-            </GlassButton>
+          <!-- Canvas oculto para captura -->
+          <canvas ref="canvasRef" class="hidden" />
+
+          <!-- Botones -->
+          <div class="flex gap-3 w-full">
+            <button @click="cancelPhoto"
+                    class="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-bold text-gray-400 transition-all">
+              <X class="w-4 h-4" /> Cancelar
+            </button>
+
+            <button v-if="!photoTaken" @click="capturePhoto" :disabled="!cameraStream || !!cameraError"
+                    class="flex-[2] flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all">
+              <Camera class="w-4 h-4" /> Capturar foto
+            </button>
+
+            <template v-else>
+              <button @click="retakePhoto"
+                      class="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-bold text-gray-300 transition-all">
+                Repetir
+              </button>
+              <button @click="confirmPhoto"
+                      class="flex-[2] flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-green-600 hover:bg-green-500 text-sm font-bold text-white shadow-lg shadow-green-500/20 transition-all">
+                <CheckCircle2 class="w-4 h-4" /> Confirmar
+              </button>
+            </template>
           </div>
+
         </GlassCard>
       </template>
 
@@ -1005,54 +1137,47 @@ const getStatusText = (status: string) => {
 
               <!-- ── Campo DNI ───────────────────────────────────────────────── -->
               <div
-                @click="activeField = 'dni'; keyboard?.resetToNumeric()"
+                @click="activeField = 'dni'; keyboard?.setAlpha()"
                 :class="[
-                  'p-5 border-2 rounded-2xl transition-all cursor-pointer',
+                  'p-4 border-2 rounded-2xl transition-all cursor-pointer',
                   activeField === 'dni' ? 'border-blue-500 bg-blue-500/5 shadow-lg shadow-blue-500/10' : 'bg-white/5 border-white/5 hover:border-white/10'
                 ]"
               >
-                <div class="flex items-center gap-2 mb-2">
-                  <User class="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <label :class="['text-xs uppercase tracking-widest font-bold', activeField === 'dni' ? 'text-blue-400' : 'text-gray-500']">
-                    DNI / NIE
-                  </label>
-                </div>
-                <div class="text-2xl font-mono tracking-widest h-9 flex items-center">
+                <label :class="['text-[10px] uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2',
+                                 activeField === 'dni' ? 'text-blue-400' : 'text-gray-500']">
+                  <User class="w-3 h-3" /> DNI / NIE
+                </label>
+                <div class="text-xl font-mono tracking-widest h-8 flex items-center">
                   <span v-if="employeeDni" class="text-white">{{ employeeDni }}</span>
-                  <span v-else class="text-white/20 text-xl">_ _ _ _ _ _ _ _ _</span>
-                  <div v-if="activeField === 'dni'" class="w-0.5 h-6 bg-blue-500 ml-1 animate-pulse rounded-full" />
+                  <span v-else class="text-white/15 text-base">— — — — — — — —</span>
+                  <div v-if="activeField === 'dni'" class="w-0.5 h-5 bg-blue-500 ml-1 animate-pulse rounded-full" />
                 </div>
               </div>
 
-              <!-- ── Campo PIN (visible solo cuando hay DNI) ────────────────── -->
-              <Transition name="fade-drop">
-                <div
-                  v-if="employeeDni"
-                  @click="activeField = 'pin'; keyboard?.resetToNumeric()"
-                  :class="[
-                    'p-5 border-2 rounded-2xl transition-all cursor-pointer',
-                    activeField === 'pin' ? 'border-blue-500 bg-blue-500/5 shadow-lg shadow-blue-500/10' : 'bg-white/5 border-white/5 hover:border-white/10'
-                  ]"
-                >
-                  <div class="flex items-center gap-2 mb-3">
-                    <ShieldCheck class="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <label :class="['text-xs uppercase tracking-widest font-bold', activeField === 'pin' ? 'text-blue-400' : 'text-gray-500']">
-                      PIN de seguridad
-                    </label>
-                  </div>
-                  <div :class="['flex items-center gap-4 min-h-[2rem] pl-1', pinError ? 'pin-shake' : '']">
-                    <div
-                      v-for="i in 5" :key="i"
-                      :class="[
-                        'w-5 h-5 rounded-full transition-all duration-300',
-                        pinError ? 'bg-red-500 shadow-lg shadow-red-500/50 scale-110' :
-                        pin[i-1] ? 'bg-blue-500 shadow-lg shadow-blue-500/50 scale-125' : 'bg-white/10'
-                      ]"
-                    />
-                    <div v-if="activeField === 'pin'" class="w-0.5 h-5 bg-blue-500 animate-pulse rounded-full" />
-                  </div>
+              <!-- ── Campo PIN — siempre visible ───────────────────────────── -->
+              <div
+                @click="activeField = 'pin'; keyboard?.resetToNumeric()"
+                :class="[
+                  'p-4 border-2 rounded-2xl transition-all cursor-pointer',
+                  activeField === 'pin' ? 'border-blue-500 bg-blue-500/5 shadow-lg shadow-blue-500/10' : 'bg-white/5 border-white/5 hover:border-white/10'
+                ]"
+              >
+                <label :class="['text-[10px] uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2',
+                                 activeField === 'pin' ? 'text-blue-400' : 'text-gray-500']">
+                  <ShieldCheck class="w-3 h-3" /> PIN de 5 dígitos
+                </label>
+                <div :class="['flex items-center gap-3 h-8 pl-0.5', pinError ? 'pin-shake' : '']">
+                  <div
+                    v-for="i in 5" :key="i"
+                    :class="[
+                      'w-4 h-4 rounded-full transition-all duration-300',
+                      pinError ? 'bg-red-500 shadow-lg shadow-red-500/50 scale-110' :
+                      pin[i-1] ? 'bg-blue-500 shadow-lg shadow-blue-500/50 scale-125' : 'bg-white/10'
+                    ]"
+                  />
+                  <div v-if="activeField === 'pin'" class="w-0.5 h-5 bg-blue-500 animate-pulse rounded-full" />
                 </div>
-              </Transition>
+              </div>
             </div>
 
             <!-- Teclado virtual -->
@@ -1156,10 +1281,102 @@ const getStatusText = (status: string) => {
       </Transition>
 
     </main>
+
+    <!-- ── Notificación de cumpleaños (toast esquina inferior derecha) ─────── -->
+    <!-- z-[180]: por encima del contenido normal, pero por debajo de modales  -->
+    <!-- (error z-300, satisfaction z-100 centrado, session countdown z-201)   -->
+    <Transition name="birthday-toast">
+      <div v-if="showBirthday"
+           class="fixed bottom-6 right-6 z-[180] pointer-events-none w-72 select-none">
+
+        <!-- Partículas flotantes decorativas -->
+        <span class="absolute left-5   bottom-full w-2   h-2   rounded-full bg-amber-400/55  bd-p bd-p1" />
+        <span class="absolute right-7  bottom-full w-1.5 h-1.5 rounded-full bg-pink-400/45   bd-p bd-p2" />
+        <span class="absolute left-14  bottom-full w-1   h-1   rounded-full bg-blue-400/55   bd-p bd-p3" />
+        <span class="absolute right-14 bottom-full w-2   h-2   rounded-full bg-purple-400/45 bd-p bd-p4" />
+        <span class="absolute left-1/2 bottom-full w-1.5 h-1.5 rounded-full bg-cyan-400/45  bd-p bd-p5" />
+        <span class="absolute left-8   bottom-full w-1   h-1   rounded-full bg-yellow-300/50 bd-p bd-p6" />
+
+        <!-- Glow exterior -->
+        <div class="absolute -inset-3 rounded-3xl bg-gradient-to-br from-amber-500/12 via-pink-500/6 to-transparent blur-2xl" />
+
+        <!-- Card -->
+        <div class="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-[#0d1120]/90 backdrop-blur-2xl shadow-2xl shadow-amber-500/8">
+
+          <!-- Borde superior tipo degradado -->
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/55 to-transparent" />
+          <!-- Brillo interno superior -->
+          <div class="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-amber-500/6 to-transparent pointer-events-none" />
+
+          <!-- Contenido -->
+          <div class="relative flex items-start gap-3.5 px-5 pt-5 pb-6">
+            <!-- Icono celebración -->
+            <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 text-xl shadow-lg shadow-amber-500/15 border border-amber-500/25"
+                 style="background: linear-gradient(135deg, rgba(245,158,11,0.22) 0%, rgba(249,115,22,0.12) 100%)">
+              🎂
+            </div>
+            <div class="flex-1 min-w-0 pt-0.5">
+              <p class="text-[9px] uppercase tracking-widest font-black text-amber-400/75 mb-1.5 flex items-center gap-1.5">
+                <span class="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                ¡Hoy es tu día!
+              </p>
+              <h3 class="text-sm font-bold tracking-tight text-white leading-tight">
+                Feliz cumpleaños, <span class="text-amber-300">{{ birthdayName }}</span>
+              </h3>
+              <p class="text-[10px] text-gray-500 mt-1.5 leading-snug">
+                El equipo te desea un día increíble ✨
+              </p>
+            </div>
+          </div>
+
+          <!-- Barra de cuenta atrás (7 s) -->
+          <div class="absolute bottom-0 left-0 right-0 h-[3px] bg-white/5 rounded-b-2xl overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-pink-400 bd-countdown" />
+          </div>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
 <style scoped>
+/* ── Birthday toast ───────────────────────────────────────────────────────── */
+.birthday-toast-enter-active {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+}
+.birthday-toast-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.birthday-toast-enter-from {
+  transform: translateY(110%) translateX(12px);
+  opacity: 0;
+}
+.birthday-toast-leave-to {
+  transform: translateY(115%);
+  opacity: 0;
+}
+
+/* Barra de cuenta atrás */
+@keyframes bd-countdown {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+.bd-countdown { animation: bd-countdown 7s linear forwards; }
+
+/* Partículas flotantes */
+@keyframes bd-particle {
+  0%   { transform: translateY(0) scale(1);    opacity: 0.7; }
+  100% { transform: translateY(-52px) scale(0); opacity: 0; }
+}
+.bd-p  { position: absolute; border-radius: 9999px; }
+.bd-p1 { animation: bd-particle 2.2s ease-out 0.0s infinite; }
+.bd-p2 { animation: bd-particle 2.8s ease-out 0.4s infinite; }
+.bd-p3 { animation: bd-particle 1.9s ease-out 0.7s infinite; }
+.bd-p4 { animation: bd-particle 2.5s ease-out 0.2s infinite; }
+.bd-p5 { animation: bd-particle 2.1s ease-out 0.9s infinite; }
+.bd-p6 { animation: bd-particle 3.0s ease-out 0.5s infinite; }
+
 @keyframes shrink {
   from { width: 100%; }
   to   { width: 0%; }

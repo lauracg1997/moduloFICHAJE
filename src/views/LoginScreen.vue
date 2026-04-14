@@ -6,13 +6,16 @@ import type { WorkMode } from '../types';
 import GlassCard from '../components/GlassCard.vue';
 import Keyboard from '../components/Keyboard.vue';
 import {
-  Building2, LogIn, Monitor, Settings, ShieldCheck,
+  Monitor, Settings, ShieldCheck,
   Camera, KeyRound, X, Pencil, Trash2, Plus,
   Check, Flame
 } from 'lucide-vue-next';
 
 const store = useKioskStore();
 const employeesStore = useEmployeesStore();
+
+// ─── Splash / pre-login ──────────────────────────────────────────────────────
+const showSplash = ref(true);
 
 // ─── Login form ──────────────────────────────────────────────────────────────
 const cif        = ref(store.deviceState.cif || 'B12345678');
@@ -98,6 +101,7 @@ const editDni      = ref('');
 const editPin      = ref('');
 const editCenter   = ref('');
 const editWorkMode = ref<WorkMode>('presencial');
+const editBirthday = ref('');
 const editError    = ref('');
 
 const openEdit = (id: string) => {
@@ -109,6 +113,8 @@ const openEdit = (id: string) => {
   editPin.value      = emp.pin;
   editCenter.value   = emp.center;
   editWorkMode.value = emp.workMode ?? 'presencial';
+  // Convertir MM-DD → YYYY-MM-DD para el input type=date (usamos año neutro 2000)
+  editBirthday.value = emp.birthday ? `2000-${emp.birthday}` : '';
   editError.value    = '';
 };
 const closeEdit = () => { editingId.value = null; editError.value = ''; };
@@ -123,6 +129,8 @@ const saveEdit = () => {
     pin:      editPin.value,
     center:   editCenter.value,
     workMode: editWorkMode.value,
+    // Convertir YYYY-MM-DD → MM-DD al guardar
+    birthday: editBirthday.value ? editBirthday.value.slice(5) : undefined,
   });
   closeEdit();
 };
@@ -147,6 +155,7 @@ const newDni        = ref('');
 const newPin        = ref('');
 const newCenter     = ref('Centro Principal');
 const newWorkMode   = ref<WorkMode>('presencial');
+const newBirthday   = ref('');
 const newError      = ref('');
 
 const saveNewEmp = () => {
@@ -160,14 +169,16 @@ const saveNewEmp = () => {
     pin:      newPin.value,
     center:   newCenter.value,
     workMode: newWorkMode.value,
+    birthday: newBirthday.value ? newBirthday.value.slice(5) : undefined,
   });
   showNewEmp.value = false;
-  newName.value = newDni.value = newPin.value = newError.value = '';
+  newName.value = newDni.value = newPin.value = newError.value = newBirthday.value = '';
   newCenter.value   = 'Centro Principal';
   newWorkMode.value = 'presencial';
 };
 
-// ─── Device settings — siempre editables ────────────────────────────────────
+// ─── Device settings ────────────────────────────────────────────────────────
+const editingDevice = ref(false);
 const devCif     = ref('');
 const devCenter  = ref('');
 const devCode    = ref('');
@@ -176,14 +187,17 @@ const initDevFields = () => {
   devCenter.value = store.deviceState.center;
   devCode.value   = store.deviceState.deviceCode;
 };
+const openDeviceEdit = () => { initDevFields(); editingDevice.value = true; };
 const saveDeviceEdit = () => {
   store.setDeviceState({ cif: devCif.value, deviceCode: devCode.value, center: devCenter.value });
+  editingDevice.value = false;
 };
+const cancelDeviceEdit = () => { editingDevice.value = false; };
 // Sincronizar cuando se abre el panel
 watch(showOverview, (val) => { if (val) initDevFields(); });
 
 // ─── Geofence radius ────────────────────────────────────────────────────────
-const radiusToPixels = (km: number) => ((km - 0.1) / 4.9) * 46 + 10;
+const radiusToPixels = (km: number) => ((km - 0.05) / 0.95) * 46 + 10;
 
 // ─── Fijar ubicación del kiosko ─────────────────────────────────────────────
 const isFetchingLocation = ref(false);
@@ -227,9 +241,100 @@ const clearKioskLocation = () => {
   <div class="h-screen overflow-hidden relative">
 
     <!-- ══════════════════════════════════════════════════════════════════════
+         SPLASH — PANTALLA DE BIENVENIDA CORPORATIVA
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <Transition name="splash-out">
+      <div v-if="showSplash"
+           class="absolute inset-0 z-30 overflow-hidden" style="background:#06080f">
+
+        <!-- ── Orbs de ambiente animados ───────────────────────────────────── -->
+        <div class="splash-orb splash-orb-1" />
+        <div class="splash-orb splash-orb-2" />
+        <div class="splash-orb splash-orb-3" />
+        <div class="splash-orb splash-orb-4" />
+
+        <!-- ── Rejilla sutil ────────────────────────────────────────────────── -->
+        <div class="absolute inset-0 pointer-events-none"
+             style="background-image:linear-gradient(rgba(148,163,184,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.04) 1px,transparent 1px);background-size:52px 52px" />
+
+        <!-- ── Contenido central ────────────────────────────────────────────── -->
+        <div class="relative z-10 h-full flex flex-col items-center justify-center px-6">
+          <div class="flex flex-col items-center text-center w-full max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-700">
+
+            <!-- Icono -->
+            <div class="relative mb-8">
+              <div class="absolute inset-0 rounded-[1.75rem] bg-blue-500/20 blur-2xl scale-150" />
+              <div class="relative w-20 h-20 rounded-[1.75rem] border border-blue-500/20 flex items-center justify-center shadow-2xl shadow-blue-500/20"
+                   style="background:linear-gradient(135deg,rgba(37,99,235,0.22) 0%,rgba(6,182,212,0.10) 100%)">
+                <svg class="w-10 h-10 text-blue-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Título -->
+            <h1 class="text-5xl sm:text-6xl font-black tracking-tighter mb-2.5 leading-none">
+              Talention<span class="splash-brand-gradient">HR</span>
+            </h1>
+            <p class="text-gray-500 text-sm tracking-widest uppercase font-medium mb-1">Sistema de Control Horario</p>
+            <p class="text-gray-700 text-[10px] tracking-[0.3em] uppercase font-bold">RDL 8/2019 · Conforme con RGPD</p>
+
+            <!-- Card glassmorphism con botón de acceso -->
+            <div class="w-full mt-10 relative">
+              <!-- Glow exterior de la card -->
+              <div class="absolute -inset-1 rounded-[1.75rem] bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-cyan-500/8 blur-xl" />
+              <!-- Card -->
+              <div class="relative overflow-hidden rounded-[1.5rem] border border-white/8 backdrop-blur-xl p-7"
+                   style="background:rgba(13,18,38,0.75)">
+                <!-- Borde superior gradiente -->
+                <div class="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-blue-400/40 to-transparent" />
+                <!-- Glow interno superior -->
+                <div class="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none" />
+
+                <!-- Botón principal -->
+                <button
+                  @click="showSplash = false"
+                  class="group relative w-full flex items-center justify-center gap-3 py-4 rounded-2xl overflow-hidden font-bold text-base tracking-wide text-white shadow-2xl shadow-blue-500/20 active:scale-[0.97] transition-transform mb-5"
+                  style="background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 50%,#1e3a8a 100%)"
+                >
+                  <!-- Shine on hover -->
+                  <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                  <svg class="w-5 h-5 relative flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/>
+                  </svg>
+                  <span class="relative">Acceder al sistema</span>
+                </button>
+
+                <!-- Fila inferior: estado + versión -->
+                <div class="flex items-center justify-between px-1">
+                  <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span class="text-[9px] uppercase tracking-widest font-bold text-gray-600">Sistema activo</span>
+                  </div>
+                  <span class="text-[9px] uppercase tracking-widest font-bold text-gray-700">v 2.5.0</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Pie ────────────────────────────────────────────────────────────── -->
+        <div class="absolute bottom-8 flex items-center gap-4 text-[9px] text-gray-700 uppercase tracking-widest font-bold z-10">
+          <span>TalentionHR</span>
+          <span class="w-1 h-1 rounded-full bg-gray-700" />
+          <span>© {{ new Date().getFullYear() }}</span>
+          <span class="w-1 h-1 rounded-full bg-gray-700" />
+          <span>Todos los derechos reservados</span>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
          PANTALLA DE ACCESO — CIF + CÓDIGO DE DISPOSITIVO
     ═══════════════════════════════════════════════════════════════════════ -->
-    <div v-if="!showOverview"
+    <div v-if="!showOverview && !showSplash"
          class="h-full flex flex-col items-center justify-center relative z-10 animate-in fade-in zoom-in-95 duration-500 px-4 sm:px-6">
 
       <div class="w-full max-w-full sm:max-w-md md:max-w-lg px-0">
@@ -377,65 +482,97 @@ const clearKioskLocation = () => {
             </p>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-
+          <!-- Fila de métricas rápidas -->
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <!-- Total -->
+            <div class="relative overflow-hidden p-4 rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-600/14 via-blue-500/7 to-transparent">
+              <div class="absolute -top-4 -right-4 w-16 h-16 bg-blue-500/10 rounded-full blur-xl pointer-events-none" />
+              <p class="text-[9px] uppercase tracking-widest font-bold text-blue-400/70 mb-1">Plantilla</p>
+              <p class="text-4xl font-black tracking-tighter text-white leading-none">{{ stats.total }}</p>
+              <p class="text-[9px] text-blue-400/50 font-bold uppercase tracking-widest mt-1.5">empleados</p>
+            </div>
             <!-- En turno -->
-            <div class="p-5 rounded-2xl border border-green-500/25 bg-green-500/5 flex flex-col gap-4">
-              <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
-                <span class="text-sm font-bold text-green-400 uppercase tracking-widest">En turno</span>
-                <span class="ml-auto text-3xl font-bold text-green-400 leading-none">{{ stats.working }}</span>
+            <div class="relative overflow-hidden p-4 rounded-2xl border border-green-500/20 bg-gradient-to-br from-green-500/14 via-green-500/7 to-transparent">
+              <div class="absolute -top-4 -right-4 w-16 h-16 bg-green-500/10 rounded-full blur-xl pointer-events-none" />
+              <p class="text-[9px] uppercase tracking-widest font-bold text-green-400/70 mb-1 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />En turno
+              </p>
+              <p class="text-4xl font-black tracking-tighter text-green-400 leading-none">{{ stats.working }}</p>
+              <p class="text-[9px] text-green-400/50 font-bold uppercase tracking-widest mt-1.5">activos ahora</p>
+            </div>
+            <!-- Descanso + Sin fichar -->
+            <div class="flex flex-col gap-2">
+              <div class="relative overflow-hidden p-3.5 rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/12 via-amber-500/5 to-transparent flex items-center justify-between">
+                <div>
+                  <p class="text-[9px] uppercase tracking-widest font-bold text-amber-400/70 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400" />Descanso
+                  </p>
+                  <p class="text-2xl font-black tracking-tighter text-amber-400 leading-none mt-0.5">{{ stats.break }}</p>
+                </div>
+              </div>
+              <div class="relative overflow-hidden p-3.5 rounded-xl border border-white/8 bg-gradient-to-br from-white/5 to-transparent flex items-center justify-between">
+                <div>
+                  <p class="text-[9px] uppercase tracking-widest font-bold text-gray-600">Sin fichar</p>
+                  <p class="text-2xl font-black tracking-tighter text-gray-500 leading-none mt-0.5">{{ stats.off }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <!-- En turno — lista -->
+            <div class="p-5 rounded-2xl border border-green-500/20 bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent flex flex-col gap-3">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+                <span class="text-xs font-bold text-green-400 uppercase tracking-widest">Trabajando ahora</span>
               </div>
               <div class="flex flex-col gap-2">
                 <div v-for="emp in employeesStore.employees.filter(e => e.status === 'EN_TURNO')" :key="emp.id"
-                     class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
-                       :style="{ backgroundColor: getColor(emp.id) + '33', color: getColor(emp.id) }">
+                     class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-green-500/8 border border-green-500/15">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                       :style="{ backgroundColor: getColor(emp.id) + '30', color: getColor(emp.id) }">
                     {{ getInitials(emp.name) }}
                   </div>
-                  <span class="text-sm font-semibold leading-tight truncate">{{ emp.name }}</span>
+                  <span class="text-sm font-semibold leading-tight truncate flex-1">{{ emp.name }}</span>
+                  <span class="text-[9px] font-bold text-green-400/60 uppercase tracking-wider">activo</span>
                 </div>
-                <p v-if="stats.working === 0" class="text-xs text-green-900/60 italic">Nadie en turno</p>
+                <p v-if="stats.working === 0" class="text-xs text-green-900/60 italic px-1">Nadie en turno</p>
               </div>
             </div>
 
-            <!-- En descanso -->
-            <div class="p-5 rounded-2xl border border-yellow-500/25 bg-yellow-500/5 flex flex-col gap-4">
-              <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-yellow-400 flex-shrink-0" />
-                <span class="text-sm font-bold text-yellow-400 uppercase tracking-widest">Descanso</span>
-                <span class="ml-auto text-3xl font-bold text-yellow-400 leading-none">{{ stats.break }}</span>
-              </div>
-              <div class="flex flex-col gap-2">
+            <!-- Descanso + Sin fichar — lista -->
+            <div class="flex flex-col gap-3">
+              <div class="p-5 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent flex flex-col gap-2">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                  <span class="text-xs font-bold text-amber-400 uppercase tracking-widest">En descanso</span>
+                </div>
                 <div v-for="emp in employeesStore.employees.filter(e => e.status === 'EN_DESCANSO')" :key="emp.id"
-                     class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
-                       :style="{ backgroundColor: getColor(emp.id) + '33', color: getColor(emp.id) }">
+                     class="flex items-center gap-3 px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                       :style="{ backgroundColor: getColor(emp.id) + '30', color: getColor(emp.id) }">
                     {{ getInitials(emp.name) }}
                   </div>
                   <span class="text-sm font-semibold leading-tight truncate">{{ emp.name }}</span>
                 </div>
-                <p v-if="stats.break === 0" class="text-xs text-yellow-900/60 italic">Nadie en descanso</p>
+                <p v-if="stats.break === 0" class="text-xs text-amber-900/60 italic px-1">Nadie en descanso</p>
               </div>
-            </div>
 
-            <!-- Sin fichar -->
-            <div class="p-5 rounded-2xl border border-white/8 bg-white/3 flex flex-col gap-4">
-              <div class="flex items-center gap-2">
-                <span class="w-3 h-3 rounded-full bg-gray-600 flex-shrink-0" />
-                <span class="text-sm font-bold text-gray-500 uppercase tracking-widest">Sin fichar</span>
-                <span class="ml-auto text-3xl font-bold text-gray-500 leading-none">{{ stats.off }}</span>
-              </div>
-              <div class="flex flex-col gap-2">
+              <div class="p-5 rounded-2xl border border-white/8 bg-gradient-to-br from-white/5 to-transparent flex flex-col gap-2">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0" />
+                  <span class="text-xs font-bold text-gray-500 uppercase tracking-widest">Sin fichar</span>
+                </div>
                 <div v-for="emp in employeesStore.employees.filter(e => e.status === 'SIN_FICHAJE')" :key="emp.id"
-                     class="flex items-center gap-3">
-                  <div class="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
+                     class="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/4 border border-white/8">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
                        :style="{ backgroundColor: getColor(emp.id) + '22', color: getColor(emp.id) }">
                     {{ getInitials(emp.name) }}
                   </div>
                   <span class="text-sm font-semibold text-gray-400 leading-tight truncate">{{ emp.name }}</span>
                 </div>
-                <p v-if="stats.off === 0" class="text-xs text-gray-700 italic">Todos fichados</p>
+                <p v-if="stats.off === 0" class="text-xs text-gray-700 italic px-1">Todos fichados</p>
               </div>
             </div>
 
@@ -536,11 +673,30 @@ const clearKioskLocation = () => {
 
         <!-- ── SECCIÓN: CONFIGURACIÓN ──────────────────────────────────── -->
         <section>
-          <div class="mb-5">
-            <h2 class="text-2xl font-bold tracking-tighter">Configuración</h2>
-            <p class="text-xs text-gray-600 uppercase tracking-widest font-bold mt-1">
-              Dispositivo y ajustes del kiosko
-            </p>
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h2 class="text-2xl font-bold tracking-tighter">Configuración</h2>
+              <p class="text-xs text-gray-600 uppercase tracking-widest font-bold mt-1">
+                Dispositivo y ajustes del kiosko
+              </p>
+            </div>
+            <!-- Botones Editar / Guardar + Cancelar -->
+            <div v-if="!editingDevice">
+              <button @click="openDeviceEdit"
+                      class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all text-sm font-bold text-gray-300">
+                <Pencil class="w-3.5 h-3.5" /> Editar
+              </button>
+            </div>
+            <div v-else class="flex gap-2">
+              <button @click="saveDeviceEdit"
+                      class="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 transition-all text-sm font-bold text-white shadow-lg shadow-blue-500/20">
+                <Check class="w-3.5 h-3.5" /> Guardar
+              </button>
+              <button @click="cancelDeviceEdit"
+                      class="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-500 hover:text-white text-sm transition-all">
+                Cancelar
+              </button>
+            </div>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -549,30 +705,33 @@ const clearKioskLocation = () => {
             <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
 
               <!-- CIF -->
-              <div class="p-4 rounded-2xl border border-white/8 bg-white/3 flex flex-col gap-2">
+              <div :class="['p-4 rounded-2xl border flex flex-col gap-2 transition-colors', editingDevice ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/8 bg-white/3']">
                 <span class="text-xs font-bold uppercase tracking-widest text-gray-500">CIF Empresa</span>
-                <input v-model="devCif" @blur="saveDeviceEdit"
-                       class="bg-white/8 border border-white/12 rounded-xl px-3 py-2 text-sm font-mono text-white outline-none focus:border-blue-500/50 w-full transition-colors" />
+                <input v-if="editingDevice" v-model="devCif"
+                       class="bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm font-mono text-white outline-none focus:border-blue-500/50 w-full transition-colors" />
+                <span v-else class="text-base font-bold font-mono text-white">{{ store.deviceState.cif }}</span>
               </div>
 
               <!-- Centro -->
-              <div class="p-4 rounded-2xl border border-white/8 bg-white/3 flex flex-col gap-2">
+              <div :class="['p-4 rounded-2xl border flex flex-col gap-2 transition-colors', editingDevice ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/8 bg-white/3']">
                 <span class="text-xs font-bold uppercase tracking-widest text-gray-500">Centro</span>
-                <select v-model="devCenter" @change="saveDeviceEdit"
-                        class="bg-white/8 border border-white/12 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 w-full transition-colors cursor-pointer">
+                <select v-if="editingDevice" v-model="devCenter"
+                        class="bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-blue-500/50 w-full transition-colors cursor-pointer">
                   <option class="bg-[#0a0f1e]">Centro Principal</option>
                   <option class="bg-[#0a0f1e]">Centro Logístico</option>
                   <option class="bg-[#0a0f1e]">Oficinas Centrales</option>
                 </select>
+                <span v-else class="text-base font-semibold text-white">{{ store.deviceState.center }}</span>
               </div>
 
               <!-- Código dispositivo -->
-              <div class="p-4 rounded-2xl border border-white/8 bg-white/3 flex flex-col gap-2">
+              <div :class="['p-4 rounded-2xl border flex flex-col gap-2 transition-colors', editingDevice ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/8 bg-white/3']">
                 <span class="text-xs font-bold uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
                   <KeyRound class="w-3 h-3" /> Código dispositivo
                 </span>
-                <input v-model="devCode" @blur="saveDeviceEdit" type="password"
-                       class="bg-white/8 border border-white/12 rounded-xl px-3 py-2 text-sm font-mono text-white outline-none focus:border-blue-500/50 w-full transition-colors" />
+                <input v-if="editingDevice" v-model="devCode" type="password"
+                       class="bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm font-mono text-white outline-none focus:border-blue-500/50 w-full transition-colors" />
+                <span v-else class="text-base font-bold font-mono tracking-widest text-white">{{ '●'.repeat(store.deviceState.deviceCode.length) }}</span>
               </div>
 
               <!-- Foto toggle -->
@@ -615,12 +774,15 @@ const clearKioskLocation = () => {
                     <circle cx="65" cy="65" r="1" fill="white"/>
                   </svg>
                 </div>
-                <input type="range" min="0.1" max="5.0" step="0.1"
+                <input type="range" min="0.05" max="1.0" step="0.05"
                        v-model.number="store.deviceState.radiusKm"
                        class="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 <div class="flex justify-between w-full text-xs text-gray-600 font-bold">
-                  <span>0.1 km</span><span>5.0 km</span>
+                  <span>50 m</span><span>1 km</span>
                 </div>
+                <p class="text-[10px] text-gray-700 text-center leading-relaxed">
+                  GPS interior puede desviarse 50–100 m.<br/>Recomendado para oficinas: <span class="text-blue-500/70">150–300 m</span>
+                </p>
               </div>
 
               <!-- Punto GPS del kiosko -->
@@ -750,6 +912,12 @@ const clearKioskLocation = () => {
                 {{ editWorkMode === 'teletrabajo' ? 'La geovalla no aplica. Puede fichar desde cualquier ubicación.' : 'Trabajador en campo. La geovalla no aplica.' }}
               </p>
             </div>
+            <div>
+              <label class="text-xs uppercase tracking-widest font-bold text-gray-500 block mb-2">Cumpleaños</label>
+              <input v-model="editBirthday" type="date"
+                     class="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 rounded-xl px-4 py-3 text-base text-white outline-none transition-colors [color-scheme:dark]" />
+              <p class="text-xs text-gray-600 mt-1">Opcional — se usará para la notificación de cumpleaños</p>
+            </div>
             <p v-if="editError" class="text-red-400 text-xs font-bold uppercase tracking-widest">{{ editError }}</p>
           </div>
 
@@ -824,6 +992,12 @@ const clearKioskLocation = () => {
                 {{ newWorkMode === 'teletrabajo' ? 'La geovalla no aplica. Puede fichar desde cualquier ubicación.' : 'Trabajador en campo. La geovalla no aplica.' }}
               </p>
             </div>
+            <div>
+              <label class="text-xs uppercase tracking-widest font-bold text-gray-500 block mb-2">Cumpleaños</label>
+              <input v-model="newBirthday" type="date"
+                     class="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 rounded-xl px-4 py-3 text-base text-white outline-none transition-colors [color-scheme:dark]" />
+              <p class="text-xs text-gray-600 mt-1">Opcional</p>
+            </div>
             <p v-if="newError" class="text-red-400 text-xs font-bold uppercase tracking-widest">{{ newError }}</p>
           </div>
 
@@ -837,3 +1011,13 @@ const clearKioskLocation = () => {
 
   </div>
 </template>
+
+<style scoped>
+.splash-out-leave-active {
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.splash-out-leave-to {
+  opacity: 0;
+  transform: scale(1.03);
+}
+</style>

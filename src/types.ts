@@ -15,6 +15,7 @@ export interface Employee {
   lastPunctualDate?: string;
   avatarColor?: string;
   workMode?: WorkMode;
+  birthday?: string; // formato MM-DD, ej: "04-14"
 }
 
 // RDL 8/2019 Compliance Models

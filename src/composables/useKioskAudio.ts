@@ -73,5 +73,21 @@ export const useKioskAudio = () => {
     { freq: 1047, start: 0.27, dur: 0.45 },
   ], 0.08);
 
-  return { playEntrada, playSalida, playDescanso, playReanudar, playError, playGoal };
+  // Cumpleaños: melodía festiva "Happy Birthday" simplificada
+  const playBirthday = () => playSequence([
+    { freq: 392, start: 0,    dur: 0.18 },
+    { freq: 392, start: 0.20, dur: 0.09 },
+    { freq: 440, start: 0.30, dur: 0.30 },
+    { freq: 392, start: 0.62, dur: 0.30 },
+    { freq: 523, start: 0.94, dur: 0.30 },
+    { freq: 494, start: 1.26, dur: 0.55 },
+    { freq: 392, start: 1.90, dur: 0.18 },
+    { freq: 392, start: 2.10, dur: 0.09 },
+    { freq: 440, start: 2.20, dur: 0.30 },
+    { freq: 392, start: 2.52, dur: 0.30 },
+    { freq: 587, start: 2.84, dur: 0.30 },
+    { freq: 523, start: 3.16, dur: 0.60 },
+  ], 0.10);
+
+  return { playEntrada, playSalida, playDescanso, playReanudar, playError, playGoal, playBirthday };
 };

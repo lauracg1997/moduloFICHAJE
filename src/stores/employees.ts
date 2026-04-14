@@ -4,9 +4,9 @@ import type { Employee, EmployeeDocument, WorkMode } from '../types';
 
 export const useEmployeesStore = defineStore('employees', () => {
   const employees = ref<Employee[]>([
-    { id: '1', dni: '12345678A', name: 'Juan Pérez',       pin: '12345', status: 'SIN_FICHAJE', workedTime: 0, breakTime: 0, center: 'Centro Principal', streakPuntualidad: 3,  workMode: 'presencial'  },
-    { id: '2', dni: '87654321B', name: 'María García',     pin: '54321', status: 'SIN_FICHAJE', workedTime: 0, breakTime: 0, center: 'Centro Principal', streakPuntualidad: 0,  workMode: 'teletrabajo' },
-    { id: '3', dni: '11223344C', name: 'Carlos Rodríguez', pin: '11111', status: 'SIN_FICHAJE', workedTime: 0, breakTime: 0, center: 'Centro Principal', streakPuntualidad: 12, workMode: 'movilidad'   },
+    { id: '1', dni: '12345678A', name: 'Juan Pérez',       pin: '12345', status: 'SIN_FICHAJE',  workedTime: 0,    breakTime: 0,   center: 'Centro Principal', streakPuntualidad: 3,  workMode: 'presencial',  birthday: '04-14' },
+    { id: '2', dni: '87654321B', name: 'María García',     pin: '54321', status: 'EN_TURNO',    workedTime: 9240, breakTime: 0,   center: 'Centro Principal', streakPuntualidad: 5,  workMode: 'teletrabajo', birthday: '06-21' },
+    { id: '3', dni: '11223344C', name: 'Carlos Rodríguez', pin: '11111', status: 'EN_DESCANSO', workedTime: 7200, breakTime: 480, center: 'Centro Principal', streakPuntualidad: 12, workMode: 'movilidad',   birthday: '12-03' },
   ]);
 
   const documents = ref<EmployeeDocument[]>([
@@ -76,12 +76,12 @@ export const useEmployeesStore = defineStore('employees', () => {
     if (emp) emp.avatarColor = color;
   };
 
-  const updateEmployee = (id: string, fields: Partial<Pick<Employee, 'name' | 'dni' | 'pin' | 'center' | 'workMode'>>) => {
+  const updateEmployee = (id: string, fields: Partial<Pick<Employee, 'name' | 'dni' | 'pin' | 'center' | 'workMode' | 'birthday'>>) => {
     const emp = employees.value.find(e => e.id === id);
     if (emp) Object.assign(emp, fields);
   };
 
-  const addEmployee = (emp: Omit<Employee, 'id' | 'status' | 'workedTime' | 'breakTime' | 'streakPuntualidad'>) => {
+  const addEmployee = (emp: Omit<Employee, 'id' | 'status' | 'workedTime' | 'breakTime' | 'streakPuntualidad'> & { birthday?: string }) => {
     const id = String(Date.now());
     employees.value.push({ workMode: 'presencial', ...emp, id, status: 'SIN_FICHAJE', workedTime: 0, breakTime: 0, streakPuntualidad: 0 });
   };
